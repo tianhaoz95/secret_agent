@@ -1018,8 +1018,7 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
                                         ),
                                       ],
                                     ),
-                                  const SizedBox(height: 8),
-                                  Text(_downloadStatus),
+                                  
                                 ],
                               ),
                             )
