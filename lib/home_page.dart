@@ -22,6 +22,7 @@ import 'package:moollama/widgets/agent_item.dart';
 import 'package:moollama/widgets/agent_settings_drawer_content.dart';
 import 'package:blur/blur.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:dio/dio.dart';
 
 final talker = TalkerFlutter.init();
 
@@ -282,14 +283,15 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
         _initializationProgress = 1.0; // Set to 1.0 after successful init
         _downloadStatus = 'Model initialized';
       });
-    } catch (e) {
+    } on DioException catch (e) {
+      widget.talker.error('Network error during model operation', e);
       if (!mounted) return;
       showDialog(
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: const Text('Error'),
-            content: Text('Error initializing Cactus model: $e'),
+            title: const Text('Network Error'),
+            content: Text('Failed to connect to the model server. Please check your internet connection or the model URL. Error: ${e.message}'),
             actions: <Widget>[
               TextButton(
                 onPressed: () {
@@ -304,8 +306,33 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
       setState(() {
         _isLoading = false;
         _downloadProgress = null;
-        _initializationProgress =
-            null; // Reset initialization progress on error
+        _initializationProgress = null;
+        _downloadStatus = 'Initialization failed: Network error';
+      });
+    } on Exception catch (e) {
+      widget.talker.error('Error initializing Cactus model', e);
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Error'),
+            content: Text('An unexpected error occurred during model initialization: $e. Please try again or check the model settings.'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+      setState(() {
+        _isLoading = false;
+        _downloadProgress = null;
+        _initializationProgress = null;
         _downloadStatus = 'Initialization failed';
       });
     }
