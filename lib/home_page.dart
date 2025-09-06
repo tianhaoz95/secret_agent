@@ -223,6 +223,14 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
   // Removed duplicate and unreferenced _initializeCactusModel method
 
   Future<void> _initializeCactusModel(String modelName, {String? systemPrompt}) async {
+    if (modelName.isEmpty) {
+      widget.talker.warning('Attempted to initialize Cactus model with empty modelName.');
+      setState(() {
+        _isLoading = false;
+        _downloadStatus = 'No model selected or available.';
+      });
+      return;
+    }
     try {
       setState(() {
         _isLoading = true;
@@ -237,9 +245,9 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
         orElse: () => <String, dynamic>{},
       );
       final modelUrl = model['url'];
-      if (modelUrl == null) {
-        widget.talker.error('Model URL not found for $modelName');
-        throw Exception('Model URL not found for $modelName');
+      if (modelUrl == null || modelUrl.isEmpty) { // Added check for empty modelUrl
+        widget.talker.error('Model URL not found or empty for $modelName');
+        throw Exception('Model URL not found or empty for $modelName');
       }
       await _agent!.download(
         modelUrl: modelUrl,
@@ -273,9 +281,12 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
           });
         },
       );
-      final prefs = await SharedPreferences.getInstance();
-      final selectedTools = prefs.getStringList('selectedTools') ?? [];
-      addAgentTools(_agent!, selectedTools);
+      // This part is fine, as _agent is checked for null before addAgentTools
+      if (_agent != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final selectedTools = prefs.getStringList('selectedTools') ?? [];
+        addAgentTools(_agent!, selectedTools);
+      }
       setState(() {
         _isLoading = false;
         _downloadProgress = null; // Ensure download progress is null
@@ -377,17 +388,28 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
 
     final agentsFromDb = await _dbHelper.getAgents();
     if (agentsFromDb.isEmpty) {
+      // Ensure at least one agent exists
       final defaultAgent = Agent(
         name: 'Default',
         modelName: _selectedModelName,
       );
       final id = await _dbHelper.insertAgent(defaultAgent.toMap());
-      setState(() {
-        _agents.add(
-          Agent(id: id, name: 'Default', modelName: _selectedModelName),
-        );
-        _selectedAgent = _agents.first;
-      });
+      if (id != 0) { // Check if insertion was successful
+        setState(() {
+          _agents.add(
+            Agent(id: id, name: 'Default', modelName: _selectedModelName),
+          );
+          _selectedAgent = _agents.first;
+        });
+      } else {
+        widget.talker.error('Failed to insert default agent.');
+        setState(() {
+          _isLoading = false;
+          _downloadStatus = 'Failed to load agents.';
+          _selectedAgent = null; // Explicitly set to null if agent creation fails
+        });
+        return; // Exit if no agent can be created
+      }
     } else {
       setState(() {
         _agents = agentsFromDb.map((map) => Agent.fromMap(map)).toList();
@@ -400,6 +422,12 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
       final prefs = await SharedPreferences.getInstance();
       _systemPrompt = prefs.getString('systemPrompt_${_selectedAgent!.id}') ?? '';
       _initializeCactusModel(_selectedAgent!.modelName, systemPrompt: _systemPrompt);
+    } else {
+      // If _selectedAgent is still null here (e.g., if user skipped download and no agents existed)
+      setState(() {
+        _isLoading = false;
+        _downloadStatus = 'No agent available. Please add one.';
+      });
     }
   }
 
@@ -529,9 +557,7 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
       });
       // Dispose and re-initialize the agent
       _agent?.unload();
-      if (_selectedAgent != null) {
-        _initializeCactusModel(_selectedAgent!.modelName, systemPrompt: _systemPrompt);
-      }
+      _initializeCactusModel(_selectedAgent!.modelName, systemPrompt: _systemPrompt); // Removed redundant check
     }
   }
 
@@ -1023,7 +1049,26 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
                                 ],
                               ),
                             )
-                          : FutureBuilder<List<Message>>(
+                          : _selectedAgent == null
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'No agent selected.',
+                                        style: Theme.of(context).textTheme.headlineSmall,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Scaffold.of(context).openDrawer(); // Open drawer to add agent
+                                        },
+                                        child: const Text('Add Agent'),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : FutureBuilder<List<Message>>(
                               future: _messagesFuture,
                               builder: (context, snapshot) {
                                 if (snapshot.connectionState ==
