@@ -22,6 +22,7 @@ import 'package:moollama/widgets/agent_item.dart';
 import 'package:moollama/widgets/agent_settings_drawer_content.dart';
 import 'package:blur/blur.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:image_picker/image_picker.dart';
 
 final talker = TalkerFlutter.init();
 
@@ -773,8 +774,7 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
                 title: const Text('Take Photo'),
                 onTap: () {
                   Navigator.of(context).pop();
-                  // Implement take photo functionality
-                  widget.talker.info('Take Photo selected');
+                  _pickImage(ImageSource.camera);
                 },
               ),
               ListTile(
@@ -782,8 +782,7 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
                 title: const Text('Choose from Gallery'),
                 onTap: () {
                   Navigator.of(context).pop();
-                  // Implement choose from gallery functionality
-                  widget.talker.info('Choose from Gallery selected');
+                  _pickImage(ImageSource.gallery);
                 },
               ),
             ],
@@ -791,6 +790,24 @@ class _SecretAgentHomeState extends State<SecretAgentHome> {
         );
       },
     );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: source);
+
+    if (image != null) {
+      widget.talker.info('Picked image path: ${image.path}');
+      // For now, just log the path. In a real scenario, you'd process this image,
+      // e.g., display it in the chat, send it to the agent, etc.
+      // You might want to add a new Message type for images.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image selected: ${image.path.split('/').last}')),
+      );
+    } else {
+      widget.talker.info('No image selected.');
+    }
   }
 
   @override
