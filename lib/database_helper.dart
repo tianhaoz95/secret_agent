@@ -29,7 +29,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'secret_agent_data.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -55,7 +55,9 @@ class DatabaseHelper {
       CREATE TABLE models(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
-        url TEXT
+        url TEXT,
+        filename TEXT,
+        type TEXT
       )
     ''');
     await _populateDefaultModels(db);
@@ -63,12 +65,15 @@ class DatabaseHelper {
 
   Future<void> _populateDefaultModels(Database db) async {
     for (var entry in defaultModelUrls.entries) {
-      await db.insert('models', {'name': entry.key, 'url': entry.value});
+      await db.insert('models', {'name': entry.key, 'url': entry.value, 'filename': null, 'type': 'LM'});
     }
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // No migrations yet.
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE models ADD COLUMN filename TEXT;');
+      await db.execute('ALTER TABLE models ADD COLUMN type TEXT;');
+    }
   }
 
   Future<int> insertMessage(int agentId, String message, bool isUser) async {
