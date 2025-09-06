@@ -3,6 +3,7 @@ import 'package:moollama/database_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:restart_app/restart_app.dart';
 import 'package:talker_flutter/talker_flutter.dart';
+import 'package:file_picker/file_picker.dart';
 
 class SettingsPage extends StatefulWidget {
   final int? agentId;
@@ -15,7 +16,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  List<String> _availableModels = [];
+  List<Map<String, dynamic>> _availableModels = []; // Changed type
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
   @override
@@ -25,7 +26,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _loadAvailableModels() async {
-    final models = await _dbHelper.getDistinctModelNames();
+    final models = await _dbHelper.getModels(); // Get all model data
     setState(() {
       _availableModels = models;
     });
@@ -101,24 +102,24 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             const SizedBox(height: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Available Models'),
-                Wrap(
-                  spacing: 8.0,
-                  runSpacing: 4.0,
-                  children: _availableModels
-                      .map(
-                        (model) => Chip(
-                          label: Text(model),
-                          backgroundColor: Colors.grey[200],
-                          labelStyle: TextStyle(color: Colors.black),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
+            const SizedBox(height: 16),
+            const Text('Manage Models', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Expanded( // Use Expanded to allow ListView to take available space
+              child: ListView.builder(
+                itemCount: _availableModels.length,
+                itemBuilder: (context, index) {
+                  final model = _availableModels[index];
+                  return ListTile(
+                    title: Text(model['name']),
+                    subtitle: Text(model['url']),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _confirmAndDeleteModel(context, model['id'], model['name']),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -192,6 +193,42 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  void _confirmAndDeleteModel(BuildContext context, int modelId, String modelName) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Confirm Deletion'),
+          content: Text('Are you sure you want to delete the model "$modelName"?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Dismiss the dialog
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await _deleteModel(modelId);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(); // Dismiss the dialog
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Model "$modelName" deleted.')),
+                );
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteModel(int modelId) async {
+    await _dbHelper.deleteModel(modelId);
+    _loadAvailableModels(); // Refresh the list after deletion
+  }
+
   void _showAddModelDialog(BuildContext context) {
     final TextEditingController nicknameController = TextEditingController();
     final TextEditingController urlController = TextEditingController();
@@ -221,11 +258,24 @@ class _SettingsPageState extends State<SettingsPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: Implement file selection
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('File selection not yet implemented.')),
+                  onPressed: () async { // Make onPressed async
+                    FilePickerResult? result = await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: ['gguf'],
                     );
+
+                    if (result != null && result.files.single.path != null) {
+                      urlController.text = result.files.single.path!;
+                      // Optionally, set nickname based on file name
+                      if (nicknameController.text.isEmpty) {
+                        nicknameController.text = result.files.single.name.replaceAll('.gguf', '');
+                      }
+                    } else {
+                      // User canceled the picker
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('File selection cancelled.')),
+                      );
+                    }
                   },
                   child: const Text('Select from Files'),
                 ),
@@ -240,14 +290,23 @@ class _SettingsPageState extends State<SettingsPage> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // TODO: Implement logic to add the model
+              onPressed: () async { // Make onPressed async
                 final String nickname = nicknameController.text;
                 final String url = urlController.text;
-                print('Nickname: $nickname, URL: $url'); // For debugging
+
+                if (nickname.isEmpty || url.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Nickname and URL cannot be empty.')),
+                  );
+                  return;
+                }
+
+                await _dbHelper.insertModel({'name': nickname, 'url': url});
+                _loadAvailableModels(); // Refresh the list of available models
+                if (!context.mounted) return;
                 Navigator.of(context).pop(); // Dismiss the dialog
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Model add logic not yet implemented.')),
+                  const SnackBar(content: Text('Model added successfully!')),
                 );
               },
               child: const Text('Add'),
